@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Stealth Browser Lab</title>
+    <style>
+        :root { --bg: #202124; --toolbar: #35363a; --text: #e8eaed; --accent: #8ab4f8; }
+        body { margin: 0; font-family: sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        
+        /* Toolbar UI */
+        .toolbar { background: var(--toolbar); padding: 8px 15px; display: flex; align-items: center; gap: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
+        .controls { display: flex; gap: 8px; }
+        .dot { width: 12px; height: 12px; border-radius: 50%; background: #ff5f56; }
+        .dot.yellow { background: #ffbd2e; }
+        .dot.green { background: #27c93f; }
+        
+        .address-bar { flex: 1; background: var(--bg); border-radius: 20px; padding: 6px 15px; display: flex; align-items: center; }
+        input { background: transparent; border: none; color: white; width: 100%; outline: none; font-size: 14px; }
+        
+        button { background: transparent; border: none; color: var(--text); cursor: pointer; font-size: 18px; padding: 4px 8px; border-radius: 4px; }
+        button:hover { background: rgba(255,255,255,0.1); }
+        
+        #viewport { flex: 1; background: white; border: none; width: 100%; }
+        .status-bar { font-size: 12px; padding: 4px 15px; background: var(--toolbar); border-top: 1px solid #444; color: #9aa0a6; }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <div class="controls">
+            <div class="dot"></div><div class="dot yellow"></div><div class="dot green"></div>
+        </div>
+        <button onclick="location.reload()">↻</button>
+        <div class="address-bar">
+            <input type="text" id="urlInput" value="https://www.google.com" onkeydown="if(event.key==='Enter') requestSite()">
+        </div>
+        <button onclick="requestSite()" style="color: var(--accent);">Go</button>
+    </div>
+    
+    <iframe id="viewport"></iframe>
+    
+    <div class="status-bar" id="statusBar">Ready</div>
+
+    <script>
+        const SECRET_KEY = 0xAB;
+        const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+        const ws = new WebSocket(`${protocol}://${location.host}`);
+        const viewport = document.getElementById('viewport');
+        const statusBar = document.getElementById('statusBar');
+
+        const transform = (buf) => new Uint8Array(buf).map(b => b ^ SECRET_KEY);
+
+        ws.onmessage = async (e) => {
+            const decrypted = new TextDecoder().decode(transform(await e.data.arrayBuffer()));
+            const res = JSON.parse(decrypted);
+            
+            if (res.error) {
+                statusBar.innerText = "Error: " + res.error;
+                return;
+            }
+
+            statusBar.innerText = `Status: ${res.status} | Type: ${res.contentType}`;
+            
+            const binary = atob(res.body);
+            const array = new Uint8Array(binary.length);
+            for(let i=0; i<binary.length; i++) array[i] = binary.charCodeAt(i);
+            
+            const blob = new Blob([array], {type: res.contentType});
+            viewport.src = URL.createObjectURL(blob);
+        };
+
+        function requestSite() {
+            let url = document.getElementById('urlInput').value;
+            if (!url.startsWith('http')) url = 'https://' + url;
+            
+            statusBar.innerText = "Connecting via Stealth Tunnel...";
+            const payload = transform(new TextEncoder().encode(JSON.stringify({ url, method: 'GET' })));
+            ws.send(payload);
+        }
+
+        ws.onopen = () => statusBar.innerText = "Encrypted Tunnel Connected.";
+        ws.onclose = () => statusBar.innerText = "Tunnel Disconnected.";
+    </script>
+</body>
+</html>
