@@ -2,77 +2,82 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Protocol Research Browser</title>
+    <title>Stealth Web Laboratory</title>
     <style>
-        :root { --bg: #121212; --panel: #1e1e1e; --accent: #00e676; --text: #f0f0f0; }
-        body { margin: 0; font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; height: 100vh; }
-        .nav-bar { background: var(--panel); padding: 10px 20px; display: flex; align-items: center; gap: 15px; border-bottom: 1px solid #333; }
-        .address-bar { flex: 1; background: #000; border: 1px solid #444; border-radius: 5px; padding: 8px 15px; display: flex; }
-        input { background: transparent; border: none; color: white; width: 100%; outline: none; font-size: 14px; }
-        button { background: var(--accent); border: none; padding: 8px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; color: #000; }
-        button:hover { opacity: 0.8; }
-        #viewport { flex: 1; background: white; border: none; width: 100%; }
-        .log-bar { height: 30px; background: #000; font-size: 12px; line-height: 30px; px: 15px; color: #888; padding: 0 15px; }
+        body { margin: 0; background: #1a1a1a; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        .toolbar { padding: 10px; background: #333; display: flex; gap: 10px; align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+        input { flex: 1; padding: 10px 15px; border-radius: 20px; border: none; background: #000; color: #fff; outline: none; font-size: 14px; }
+        button { padding: 10px 25px; border-radius: 20px; border: none; background: #00e676; color: #000; font-weight: bold; cursor: pointer; }
+        #viewer { flex: 1; border: none; background: white; width: 100%; }
+        .status-bar { font-size: 11px; padding: 5px 15px; background: #222; color: #888; border-top: 1px solid #444; }
     </style>
 </head>
 <body>
-    <div class="nav-bar">
-        <div style="font-weight: bold; color: var(--accent);">STEALTH_LAB</div>
-        <div class="address-bar">
-            <input type="text" id="urlInput" value="https://www.google.com" onkeydown="if(event.key==='Enter') requestSite()">
-        </div>
-        <button onclick="requestSite()">CONNECT</button>
+    <div class="toolbar">
+        <div style="color:#00e676; font-weight:bold; margin-right:5px;">STEALTH</div>
+        <input type="text" id="urlInput" value="https://www.google.com" onkeydown="if(event.key==='Enter') requestSite()">
+        <button onclick="requestSite()">GO</button>
     </div>
-    
-    <iframe id="viewport"></iframe>
-    
-    <div class="log-bar" id="log">Tunnel Status: Initializing...</div>
+    <iframe id="viewer"></iframe>
+    <div class="status-bar" id="status">Ready</div>
 
     <script>
         const SECRET_KEY = 0xAB;
         const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
         const ws = new WebSocket(`${protocol}://${location.host}`);
-        const viewport = document.getElementById('viewport');
-        const log = document.getElementById('log');
+        const viewer = document.getElementById('viewer');
+        const status = document.getElementById('status');
 
-        const transform = (buf) => new Uint8Array(buf).map(b => b ^ SECRET_KEY);
-
-        ws.onopen = () => log.innerText = "Tunnel Status: Connected (XOR Obfuscation Active)";
-        ws.onclose = () => log.innerText = "Tunnel Status: Disconnected";
+        const transform = (data) => {
+            const buf = typeof data === 'string' ? new TextEncoder().encode(data) : data;
+            return buf.map(b => b ^ SECRET_KEY);
+        };
 
         ws.onmessage = async (e) => {
             try {
-                const decrypted = new TextDecoder().decode(transform(await e.data.arrayBuffer()));
+                const decrypted = new TextDecoder().decode(transform(new Uint8Array(await e.data.arrayBuffer())));
                 const res = JSON.parse(decrypted);
-                
-                if (res.error) {
-                    log.innerText = "Tunnel Error: " + res.error;
-                    return;
-                }
+                if (res.error) return status.innerText = "Error: " + res.error;
 
-                log.innerText = `Protocol: WS/XOR | Status: ${res.status} | URL: ${res.url}`;
-                
-                // Base64デコードとBlob化による表示
+                status.innerText = `Loaded: ${res.url} [${res.contentType}]`;
+
                 const binary = atob(res.body);
-                const array = new Uint8Array(binary.length);
-                for(let i=0; i<binary.length; i++) array[i] = binary.charCodeAt(i);
-                
+                const array = new Uint8Array(binary.length).map((_, i) => binary.charCodeAt(i));
                 const blob = new Blob([array], {type: res.contentType});
-                viewport.src = URL.createObjectURL(blob);
-            } catch (err) {
-                log.innerText = "Processing Error: " + err.message;
-            }
+                const blobUrl = URL.createObjectURL(blob);
+
+                if (res.contentType.includes('text/html')) {
+                    viewer.src = blobUrl;
+                }
+            } catch (err) { status.innerText = "Processing Error"; }
         };
+
+        window.addEventListener('message', (e) => {
+            if (e.data.type === 'nav') {
+                document.getElementById('urlInput').value = e.data.url;
+                requestSite();
+            }
+        });
 
         function requestSite() {
             let url = document.getElementById('urlInput').value;
             if (!url.startsWith('http')) url = 'https://' + url;
-            
-            log.innerText = "Sending Encapsulated Request...";
-            const payload = transform(new TextEncoder().encode(JSON.stringify({ url, method: 'GET' })));
-            ws.send(payload);
+            status.innerText = "Tunneling request...";
+            ws.send(transform(JSON.stringify({ url, method: 'GET' })));
         }
+
+        // iframe内のリンククリックをキャッチして親ウィンドウ経由で再リクエスト
+        viewer.onload = () => {
+            try {
+                const doc = viewer.contentDocument;
+                doc.querySelectorAll('a').forEach(el => {
+                    el.onclick = (ev) => {
+                        ev.preventDefault();
+                        window.parent.postMessage({type: 'nav', url: el.href}, '*');
+                    };
+                });
+            } catch(e) {}
+        };
     </script>
 </body>
 </html>
