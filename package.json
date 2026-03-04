@@ -1,16 +1,18 @@
 {
-  "name": "stealth-lab-proxy",
+  "name": "stealth-browser-ultra",
   "version": "1.0.0",
-  "description": "Learning tool for protocol encapsulation and obfuscation",
+  "description": "Educational tool for advanced protocol obfuscation and resource rewriting",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
     "axios": "^1.6.0",
+    "cheerio": "^1.0.0-rc.12",
     "express": "^4.18.2",
     "ws": "^8.14.2"
   },
-  "author": "",
-  "license": "ISC"
+  "engines": {
+    "node": ">=14.0.0"
+  }
 }
