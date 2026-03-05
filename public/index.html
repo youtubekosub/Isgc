@@ -52,17 +52,14 @@
         // Service Workerの登録と通信の橋渡し
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('/sw.js').then(() => {
-                console.log('Service Worker Registered');
+                status.innerText = "Service Worker Active";
             });
 
             navigator.serviceWorker.addEventListener('message', async (event) => {
                 if (event.data.type === 'fetch') {
                     const targetUrl = event.data.url;
-                    
-                    // WebSocket経由でデータを要求
                     ws.send(transform(JSON.stringify({ url: targetUrl, method: 'GET' })));
                     
-                    // 次のws.onmessageでこのURLに対応するものを探す
                     const responseHandler = async (e) => {
                         const rawData = new Uint8Array(await e.data.arrayBuffer());
                         const res = JSON.parse(new TextDecoder().decode(transform(rawData)));
@@ -82,10 +79,18 @@
                 const decrypted = new TextDecoder().decode(transform(new Uint8Array(await e.data.arrayBuffer())));
                 const res = JSON.parse(decrypted);
                 
+                if (res.error) {
+                    status.innerText = res.error;
+                    loader.style.display = "none";
+                    return;
+                }
+
                 if (res.contentType && res.contentType.includes('text/html')) {
                     loader.style.display = "none";
                     status.innerText = `Loaded: ${res.url}`;
-                    const blob = new Blob([Uint8Array.from(atob(res.body), c => c.charCodeAt(0))], {type: 'text/html'});
+                    const binary = atob(res.body);
+                    const array = new Uint8Array(binary.length).map((_, i) => binary.charCodeAt(i));
+                    const blob = new Blob([array], {type: 'text/html'});
                     viewer.src = URL.createObjectURL(blob);
                 }
             } catch (err) { 
