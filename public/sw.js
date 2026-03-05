@@ -9,14 +9,18 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
     const url = event.request.url;
 
-    // 自分のドメインへのリクエスト、またはdata:プロトコルは無視
-    if (url.includes(location.host) || url.startsWith('data:')) return;
+    // 自分のドメインへのリクエスト、またはdata:プロトコル、拡張機能は無視
+    if (url.includes(location.host) || url.startsWith('data:') || url.startsWith('chrome-extension')) return;
 
     event.respondWith(
         new Promise((resolve) => {
             const mc = new MessageChannel();
             mc.port1.onmessage = (msg) => {
                 const res = msg.data;
+                if (res.error) {
+                    resolve(new Response("Request Interrupted by Filter", { status: 500 }));
+                    return;
+                }
                 const binary = atob(res.body);
                 const array = new Uint8Array(binary.length).map((_, i) => binary.charCodeAt(i));
                 resolve(new Response(array, {
@@ -28,6 +32,9 @@ self.addEventListener('fetch', (event) => {
             self.clients.matchAll().then(clients => {
                 if (clients && clients.length) {
                     clients[0].postMessage({ type: 'fetch', url: url }, [mc.port2]);
+                } else {
+                    // クライアントが見つからない場合は通常リクエストを試行
+                    fetch(event.request).then(resolve);
                 }
             });
         })
