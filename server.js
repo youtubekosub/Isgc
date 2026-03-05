@@ -51,8 +51,10 @@ const rewriteResources = (content, targetUrl, contentType) => {
             $(el).text(rewriteCSS(css, targetUrl));
         });
 
-        // モダンサイトのCSP（セキュリティ制限）を解除してJSの動作を許可する
+        // ISGC対策：CSPおよびX-Frame-Options等の制限ヘッダーをHTMLレベルで徹底除去
         $('meta[http-equiv="Content-Security-Policy"]').remove();
+        $('meta[http-equiv="content-security-policy"]').remove();
+        $('meta[http-equiv="X-Frame-Options"]').remove();
         $('meta[http-equiv="content-security-policy"]').remove();
 
         return $.html();
@@ -82,12 +84,17 @@ wss.on('connection', (ws) => {
                 method: method || 'GET',
                 data: data || null,
                 headers: {
-                    ...headers,
-                    'Cookie': jar.get(host) || '',
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                    'Referer': url
+                    'Accept': '*/*',
+                    'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache',
+                    'Cookie': jar.get(host) || '',
+                    'Referer': url,
+                    ...headers
                 },
                 responseType: 'arraybuffer',
+                timeout: 30000, // ISGCの遅延対策でタイムアウトを延長
                 validateStatus: false
             });
 
@@ -110,7 +117,7 @@ wss.on('connection', (ws) => {
                 url: url
             })));
         } catch (e) {
-            ws.send(transform(JSON.stringify({ error: e.message })));
+            ws.send(transform(JSON.stringify({ error: "Proxy Error: " + e.message })));
         }
     });
 });
