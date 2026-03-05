@@ -30,6 +30,11 @@ const rewriteResources = (content, targetUrl, contentType) => {
     // HTMLのリライト
     if (contentType.includes('text/html')) {
         const $ = cheerio.load(content);
+        const urlObj = new URL(targetUrl);
+
+        // Service Workerとの親和性を高めるため、baseタグを挿入
+        $('head').prepend(`<base href="${urlObj.origin}${urlObj.pathname}">`);
+
         $('a, img, link, script, source, iframe').each((i, el) => {
             ['href', 'src', 'action'].forEach(attr => {
                 const val = $(el).attr(attr);
@@ -45,10 +50,15 @@ const rewriteResources = (content, targetUrl, contentType) => {
             const css = $(el).text();
             $(el).text(rewriteCSS(css, targetUrl));
         });
+
+        // モダンサイトのCSP（セキュリティ制限）を解除してJSの動作を許可する
+        $('meta[http-equiv="Content-Security-Policy"]').remove();
+        $('meta[http-equiv="content-security-policy"]').remove();
+
         return $.html();
     }
     
-    // CSSファイル単体のリライト（これが無いと外部CSS内の画像が読み込まれない）
+    // CSSファイル単体のリライト
     if (contentType.includes('text/css')) {
         return rewriteCSS(content.toString(), targetUrl);
     }
