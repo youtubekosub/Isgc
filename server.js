@@ -51,11 +51,13 @@ const rewriteResources = (content, targetUrl, contentType) => {
             $(el).text(rewriteCSS(css, targetUrl));
         });
 
-        // ISGC対策：CSPおよびX-Frame-Options等の制限ヘッダーをHTMLレベルで徹底除去
+        // ISGCのHTTPSデコード対策: 
+        // 1. CSP（セキュリティ制限）を徹底除去
         $('meta[http-equiv="Content-Security-Policy"]').remove();
         $('meta[http-equiv="content-security-policy"]').remove();
+        // 2. GitHubのユニコーンエラー（プロキシ検知）を防ぐため特定のメタタグを削除
+        $('meta[name="expected-hostname"]').remove();
         $('meta[http-equiv="X-Frame-Options"]').remove();
-        $('meta[http-equiv="content-security-policy"]').remove();
 
         return $.html();
     }
@@ -85,16 +87,14 @@ wss.on('connection', (ws) => {
                 data: data || null,
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                    'Accept': '*/*',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
                     'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
-                    'Cache-Control': 'no-cache',
-                    'Pragma': 'no-cache',
                     'Cookie': jar.get(host) || '',
-                    'Referer': url,
+                    'Referer': 'https://www.google.com/', // ISGCを欺くためのダミーリファラ
                     ...headers
                 },
                 responseType: 'arraybuffer',
-                timeout: 30000, // ISGCの遅延対策でタイムアウトを延長
+                timeout: 30000,
                 validateStatus: false
             });
 
@@ -110,6 +110,7 @@ wss.on('connection', (ws) => {
                 bodyData = Buffer.from(rewriteResources(bodyData.toString(), url, contentType));
             }
 
+            // ISGCのSSL解析を空振りさせるため、Base64化したデータを送信
             ws.send(transform(JSON.stringify({
                 body: bodyData.toString('base64'),
                 status: res.status,
@@ -117,7 +118,7 @@ wss.on('connection', (ws) => {
                 url: url
             })));
         } catch (e) {
-            ws.send(transform(JSON.stringify({ error: "Proxy Error: " + e.message })));
+            ws.send(transform(JSON.stringify({ error: e.message })));
         }
     });
 });
