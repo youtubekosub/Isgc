@@ -13,32 +13,47 @@ const SECRET_KEY = 0xAB;
 // 既存の難読化（XOR）
 const transform = (buf) => Buffer.from(buf).map(b => b ^ SECRET_KEY);
 
-// リソース書き換え機能: 画像、CSS、JSのパスを絶対URLに変換
-const rewriteResources = (html, targetUrl) => {
-    const $ = cheerio.load(html);
-    
-    // a, img, link, script, source, iframe 等のURL属性を修正
-    $('a, img, link, script, source, iframe').each((i, el) => {
-        ['href', 'src', 'action'].forEach(attr => {
-            const val = $(el).attr(attr);
-            if (val && !val.startsWith('data:') && !val.startsWith('#')) {
-                try {
-                    // 相対パスをターゲットURL基準の絶対パスに変換
-                    $(el).attr(attr, new URL(val, targetUrl).href);
-                } catch (e) {}
-            }
+// CSS内の url() 指定を正規化する補助関数
+const rewriteCSS = (css, targetUrl) => {
+    return css.replace(/url\(['"]?([^'"]+)['"]?\)/g, (match, p1) => {
+        try {
+            if (p1.startsWith('data:') || p1.startsWith('http')) return match;
+            return `url("${new URL(p1, targetUrl).href}")`;
+        } catch(e) {
+            return match;
+        }
+    });
+};
+
+// リソース書き換え機能: HTMLおよびCSS内のパスを正規化
+const rewriteResources = (content, targetUrl, contentType) => {
+    // HTMLのリライト
+    if (contentType.includes('text/html')) {
+        const $ = cheerio.load(content);
+        $('a, img, link, script, source, iframe').each((i, el) => {
+            ['href', 'src', 'action'].forEach(attr => {
+                const val = $(el).attr(attr);
+                if (val && !val.startsWith('data:') && !val.startsWith('#')) {
+                    try {
+                        $(el).attr(attr, new URL(val, targetUrl).href);
+                    } catch (e) {}
+                }
+            });
         });
-    });
-
-    // styleタグ内の url() 指定も正規化
-    $('style').each((i, el) => {
-        const css = $(el).text();
-        $(el).text(css.replace(/url\(['"]?([^'"]+)['"]?\)/g, (match, p1) => {
-            try { return `url("${new URL(p1, targetUrl).href}")`; } catch(e) { return match; }
-        }));
-    });
-
-    return $.html();
+        // インラインCSSのリライト
+        $('style').each((i, el) => {
+            const css = $(el).text();
+            $(el).text(rewriteCSS(css, targetUrl));
+        });
+        return $.html();
+    }
+    
+    // CSSファイル単体のリライト（これが無いと外部CSS内の画像が読み込まれない）
+    if (contentType.includes('text/css')) {
+        return rewriteCSS(content.toString(), targetUrl);
+    }
+    
+    return content;
 };
 
 app.use(express.static('public'));
@@ -73,9 +88,9 @@ wss.on('connection', (ws) => {
             let bodyData = res.data;
             const contentType = res.headers['content-type'] || '';
 
-            // HTMLの場合のみ内部パスを書き換えて画像/CSSのリンクを維持する
-            if (contentType.includes('text/html')) {
-                bodyData = Buffer.from(rewriteResources(bodyData.toString(), url));
+            // HTMLまたはCSSの場合に内部パスを書き換えて規制を回避
+            if (contentType.includes('text/html') || contentType.includes('text/css')) {
+                bodyData = Buffer.from(rewriteResources(bodyData.toString(), url, contentType));
             }
 
             ws.send(transform(JSON.stringify({
