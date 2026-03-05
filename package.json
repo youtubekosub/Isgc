@@ -1,11 +1,19 @@
 {
   "name": "stealth-browser-ultra",
   "version": "1.0.0",
-  "description": "Educational tool for advanced protocol obfuscation and resource rewriting",
+  "description": "Advanced stealth proxy with Service Worker support and resource rewriting",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
+  "keywords": [
+    "proxy",
+    "stealth",
+    "websocket",
+    "service-worker"
+  ],
+  "author": "",
+  "license": "ISC",
   "dependencies": {
     "axios": "^1.6.0",
     "cheerio": "^1.0.0-rc.12",
